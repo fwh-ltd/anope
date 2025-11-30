@@ -144,6 +144,21 @@ class CoreExport IRCDProto : public Service
 	virtual void SendAction(const MessageSource &source, const Anope::string &dest, const char *fmt, ...);
 	virtual void SendCTCP(const MessageSource &source, const Anope::string &dest, const char *fmt, ...);
 
+	/** Sends IRCv3 metadata associated with a user. Default is a no-op unless overridden
+	 *  by the protocol module.
+	 * @param u The target user
+	 * @param key Metadata key
+	 * @param value Metadata value
+	 */
+	virtual void SendMetadata(User *u, const Anope::string &key, const Anope::string &value) { }
+
+	/** Sends IRCv3 metadata associated with a channel. Default is a no-op.
+	 * @param c The target channel
+	 * @param key Metadata key
+	 * @param value Metadata value
+	 */
+	virtual void SendMetadata(Channel *c, const Anope::string &key, const Anope::string &value) { }
+
 	virtual void SendGlobalNotice(BotInfo *bi, const Server *dest, const Anope::string &msg) = 0;
 	virtual void SendGlobalPrivmsg(BotInfo *bi, const Server *desc, const Anope::string &msg) = 0;
 

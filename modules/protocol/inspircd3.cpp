@@ -104,6 +104,20 @@ class InspIRCd3Proto : public IRCDProto
 		UplinkSocket::Message(Me) << "METADATA * saslmechlist :" << (mechanisms.empty() ? "" : mechlist.substr(1));
 	}
 
+	void SendMetadata(User *u, const Anope::string &key, const Anope::string &value) anope_override
+	{
+		if (!u)
+			return;
+		UplinkSocket::Message(Me) << "METADATA " << u->GetUID() << " " << key << " :" << value;
+	}
+
+	void SendMetadata(Channel *c, const Anope::string &key, const Anope::string &value) anope_override
+	{
+		if (!c)
+			return;
+		UplinkSocket::Message(Me) << "METADATA " << c->name << " " << c->creation_time << " " << key << " :" << value;
+	}
+
 	void SendSVSKillInternal(const MessageSource &source, User *user, const Anope::string &buf) anope_override
 	{
 		IRCDProto::SendSVSKillInternal(source, user, buf);
@@ -1397,50 +1411,64 @@ class IRCDMessageMetadata : IRCDMessage
 
 	void Run(MessageSource &source, const std::vector<Anope::string> &params) anope_override
 	{
-		// We deliberately ignore non-bursting servers to avoid pseudoserver fights
-		// Channel METADATA has an additional parameter: the channel TS
-		// Received: :715 METADATA #chan 1572026333 mlock :nt
-		if ((params[0][0] == '#') && (params.size() > 3) && (!source.GetServer()->IsSynced()))
-		{
-			Channel *c = Channel::Find(params[0]);
-			if (c)
-			{
-				if ((c->ci) && (do_mlock) && (params[2] == "mlock"))
-				{
-					ModeLocks *modelocks = c->ci->GetExt<ModeLocks>("modelocks");
-					Anope::string modes;
-					if (modelocks)
-						modes = modelocks->GetMLockAsString(false).replace_all_cs("+", "").replace_all_cs("-", "");
+		if (params.empty())
+			return;
 
-					// Mode lock string is not what we say it is?
-					if (modes != params[3])
-						UplinkSocket::Message(Me) << "METADATA " << c->name << " " << c->creation_time << " mlock :" << modes;
-				}
-				else if ((c->ci) && (do_topiclock) && (params[2] == "topiclock"))
+		if (params[0][0] == '#')
+		{
+			// We deliberately ignore non-bursting servers to avoid pseudoserver fights
+			// Channel METADATA has an additional parameter: the channel TS
+			// Received: :715 METADATA #chan 1572026333 mlock :nt
+			if ((params.size() > 3) && (!source.GetServer()->IsSynced()))
+			{
+				Channel *c = Channel::Find(params[0]);
+				if (c)
 				{
-					bool mystate = c->ci->HasExt("TOPICLOCK");
-					bool serverstate = (params[3] == "1");
-					if (mystate != serverstate)
-						UplinkSocket::Message(Me) << "METADATA " << c->name << " " << c->creation_time << " topiclock :" << (mystate ? "1" : "");
-				}
-				else if (params[2] == "maxlist")
-				{
-					ListLimits limits;
-					spacesepstream limitstream(params[3]);
-					Anope::string modechr, modelimit;
-					while (limitstream.GetToken(modechr) && limitstream.GetToken(modelimit))
+					if ((c->ci) && (do_mlock) && (params[2] == "mlock"))
 					{
-						limits.insert(std::make_pair(modechr[0], convertTo<unsigned>(modelimit)));
+						ModeLocks *modelocks = c->ci->GetExt<ModeLocks>("modelocks");
+						Anope::string modes;
+						if (modelocks)
+							modes = modelocks->GetMLockAsString(false).replace_all_cs("+", "").replace_all_cs("-", "");
+
+						// Mode lock string is not what we say it is?
+						if (modes != params[3])
+							UplinkSocket::Message(Me) << "METADATA " << c->name << " " << c->creation_time << " mlock :" << modes;
 					}
-					maxlist.Set(c, limits);
+					else if ((c->ci) && (do_topiclock) && (params[2] == "topiclock"))
+					{
+						bool mystate = c->ci->HasExt("TOPICLOCK");
+						bool serverstate = (params[3] == "1");
+						if (mystate != serverstate)
+							UplinkSocket::Message(Me) << "METADATA " << c->name << " " << c->creation_time << " topiclock :" << (mystate ? "1" : "");
+					}
+					else if (params[2] == "maxlist")
+					{
+						ListLimits limits;
+						spacesepstream limitstream(params[3]);
+						Anope::string modechr, modelimit;
+						while (limitstream.GetToken(modechr) && limitstream.GetToken(modelimit))
+						{
+							limits.insert(std::make_pair(modechr[0], convertTo<unsigned>(modelimit)));
+						}
+						maxlist.Set(c, limits);
+					}
 				}
+			}
+
+			if (params.size() > 3)
+			{
+				Channel *c = Channel::Find(params[0]);
+				if (c)
+					FOREACH_MOD(OnChannelMetadata, (c, params[2], params[3]));
 			}
 		}
 		else if (isdigit(params[0][0]))
 		{
+			User *u = User::Find(params[0]);
+
 			if (params[1].equals_cs("accountname"))
 			{
-				User *u = User::Find(params[0]);
 				NickCore *nc = NickCore::Find(params[2]);
 				if (u && nc)
 					u->Login(nc);
@@ -1453,7 +1481,6 @@ class IRCDMessageMetadata : IRCDMessage
 			 */
 			else if (params[1].equals_cs("ssl_cert"))
 			{
-				User *u = User::Find(params[0]);
 				if (!u)
 					return;
 				u->Extend<bool>("ssl");
@@ -1466,6 +1493,9 @@ class IRCDMessageMetadata : IRCDMessage
 				}
 				FOREACH_MOD(OnFingerprint, (u));
 			}
+
+			if (u && params.size() > 2)
+				FOREACH_MOD(OnUserMetadata, (u, params[1], params[2]));
 		}
 		else if (params[0] == "*")
 		{
@@ -1930,7 +1960,9 @@ class ProtoInspIRCd3 : public Module
 
 	void SendChannelMetadata(Channel *c, const Anope::string &metadataname, const Anope::string &value)
 	{
-		UplinkSocket::Message(Me) << "METADATA " << c->name << " " << c->creation_time << " " << metadataname << " :" << value;
+		if (!c)
+			return;
+		IRCD->SendMetadata(c, metadataname, value);
 	}
 
  public:

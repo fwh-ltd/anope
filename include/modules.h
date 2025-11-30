@@ -864,6 +864,20 @@ class CoreExport Module : public Extensible
 	 */
 	virtual void OnFingerprint(User *u) { throw NotImplementedException(); }
 
+	/** Called whenever metadata is received for a user.
+	 * @param u The user the metadata belongs to
+	 * @param key The metadata name
+	 * @param value The metadata value
+	 */
+	virtual void OnUserMetadata(User *u, const Anope::string &key, const Anope::string &value) { throw NotImplementedException(); }
+
+	/** Called whenever metadata is received for a channel.
+	 * @param c The channel the metadata belongs to
+	 * @param key The metadata name
+	 * @param value The metadata value
+	 */
+	virtual void OnChannelMetadata(Channel *c, const Anope::string &key, const Anope::string &value) { throw NotImplementedException(); }
+
 	/** Called when a user becomes (un)away
 	 * @param message The message, is .empty() if unaway
 	 */
@@ -1125,7 +1139,7 @@ enum Implementation
 	I_OnUserLogin, I_OnNickLogout, I_OnNickRegister, I_OnNickConfirm, I_OnNickSuspend, I_OnNickUnsuspended, I_OnDelNick, I_OnNickCoreCreate,
 	I_OnDelCore, I_OnChangeCoreDisplay, I_OnNickClearAccess, I_OnNickAddAccess, I_OnNickEraseAccess, I_OnNickClearCert,
 	I_OnNickAddCert, I_OnNickEraseCert, I_OnNickInfo, I_OnBotInfo, I_OnCheckAuthentication, I_OnNickUpdate,
-	I_OnFingerprint, I_OnUserAway, I_OnInvite, I_OnDeleteVhost, I_OnSetVhost, I_OnSetDisplayedHost, I_OnMemoSend, I_OnMemoDel,
+	I_OnFingerprint, I_OnUserMetadata, I_OnChannelMetadata, I_OnUserAway, I_OnInvite, I_OnDeleteVhost, I_OnSetVhost, I_OnSetDisplayedHost, I_OnMemoSend, I_OnMemoDel,
 	I_OnChannelModeSet, I_OnChannelModeUnset, I_OnUserModeSet, I_OnUserModeUnset, I_OnChannelModeAdd, I_OnUserModeAdd,
 	I_OnMLock, I_OnUnMLock, I_OnModuleLoad, I_OnModuleUnload, I_OnServerSync, I_OnUplinkSync, I_OnBotPrivmsg, I_OnBotNotice,
 	I_OnPrivmsg, I_OnLog, I_OnLogMessage, I_OnDnsRequest, I_OnCheckModes, I_OnChannelSync, I_OnSetCorrectModes,

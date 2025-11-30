@@ -29,6 +29,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../conanbuildinfo.cmake")
   copy_extra("m_sql_authentication")
   copy_extra("m_sql_log")
   copy_extra("m_sql_oper")
+  copy_extra("m_sql_metadata")
   copy_extra("m_ldap_authentication")
   copy_extra("m_ldap_oper")
 
