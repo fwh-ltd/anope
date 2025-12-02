@@ -26,7 +26,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../conanbuildinfo.cmake")
   # this uses Wldap so should always be available
   copy_extra("m_ldap")
   # these don't actually have extra dependencies, but require a module which does
-  copy_extra("m_sql_authentication")
+  copy_extra("m_http_client")
   copy_extra("m_sql_log")
   copy_extra("m_sql_oper")
   copy_extra("m_sql_metadata")
