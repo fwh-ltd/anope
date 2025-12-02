@@ -31,153 +31,147 @@ extern "C" {
 #include "yyjson.c"
 }
 
-class JwtSASLModule final : public Module
+class SaslOAuthBearerModule final : public Module
 {
-	private:
-		Anope::string me_url;
-		Anope::string preferred_claim{"preferred_username"};
-		Anope::string fallback_claim{"user_login"};
-		Anope::string auth_header_prefix{"Authorization: Bearer "};
-		int timeout_secs{5};
-		bool follow_redirects{false};
-		bool verify_peer{true};
-		bool verify_host{true};
-		Anope::string ca_info;
-		ServiceReference<HTTP::Client> http_client;
+	Anope::string me_url;
+	Anope::string preferred_claim{"preferred_username"};
+	Anope::string fallback_claim{"user_login"};
+	Anope::string auth_header_prefix{"Authorization: Bearer "};
+	int timeout_secs{5};
+	bool follow_redirects{false};
+	bool verify_peer{true};
+	bool verify_host{true};
+	Anope::string ca_info;
+	ServiceReference<HTTP::Client> http_client;
 
-		static size_t WriteCallback(void *contents, size_t size, size_t nmemb, std::string *userp)
+	Anope::string yyjson_get_astr(yyjson_val *obj, const char *key)
+	{
+		const char *str = yyjson_get_str(yyjson_obj_get(obj, key));
+		return str ? Anope::string(str) : Anope::string("");
+	}
+
+public:
+	Anope::string ExtractUsername(const std::string &body)
+	{
+		yyjson_doc *doc = yyjson_read(body.c_str(), body.length(), 0);
+		if (!doc)
+			return "";
+		yyjson_val *root = yyjson_doc_get_root(doc);
+		if (!yyjson_is_obj(root))
 		{
-				userp->append(static_cast<char *>(contents), size * nmemb);
-				return size * nmemb;
-        }
-
-        Anope::string yyjson_get_astr(yyjson_val *obj, const char *key)
-        {
-                const char *str = yyjson_get_str(yyjson_obj_get(obj, key));
-                return str ? Anope::string(str) : Anope::string("");
-        }
-
-        Anope::string ExtractUsername(const std::string &body)
-        {
-                yyjson_doc *doc = yyjson_read(body.c_str(), body.length(), 0);
-                if (!doc)
-                        return "";
-                yyjson_val *root = yyjson_doc_get_root(doc);
-                if (!yyjson_is_obj(root))
-                {
-                        yyjson_doc_free(doc);
-                        return "";
-                }
-
-                Anope::string user = yyjson_get_astr(root, preferred_claim.c_str());
-                if (user.empty() && !fallback_claim.empty())
-                        user = yyjson_get_astr(root, fallback_claim.c_str());
-
-                yyjson_doc_free(doc);
-                return user;
+			yyjson_doc_free(doc);
+			return "";
 		}
 
- public:
-		JwtSASLModule(const Anope::string &modname, const Anope::string &creator) : Module(modname, creator, THIRD)
-			, http_client("HTTP::Client", "http_client")
+		Anope::string user = yyjson_get_astr(root, preferred_claim.c_str());
+		if (user.empty() && !fallback_claim.empty())
+			user = yyjson_get_astr(root, fallback_claim.c_str());
+
+		yyjson_doc_free(doc);
+		return user;
+	}
+
+	SaslOAuthBearerModule(const Anope::string &modname, const Anope::string &creator)
+		: Module(modname, creator, THIRD)
+		, http_client("HTTP::Client", "http_client")
+	{
+	}
+
+	void OnReload(Configuration::Conf *conf) anope_override
+	{
+		Configuration::Block *block = conf->GetModule(this);
+		me_url = block->Get<Anope::string>("me_url", me_url);
+		preferred_claim = block->Get<Anope::string>("preferred_claim", preferred_claim);
+		fallback_claim = block->Get<Anope::string>("fallback_claim", fallback_claim);
+		auth_header_prefix = block->Get<Anope::string>("auth_header_prefix", auth_header_prefix);
+		timeout_secs = block->Get<int>("timeout", "5");
+		follow_redirects = block->Get<bool>("follow_redirects", false);
+		verify_peer = block->Get<bool>("verify_peer", true);
+		verify_host = block->Get<bool>("verify_host", true);
+		ca_info = block->Get<Anope::string>("ca_info");
+
+		if (!http_client)
+			http_client = ServiceReference<HTTP::Client>("HTTP::Client", "http_client");
+	}
+
+	void OnCheckAuthentication(User *, IdentifyRequest *req) anope_override
+	{
+		if (!req)
+			return;
+
+		if (!anope_dynamic_static_cast<SASL::IdentifyRequest *>(req))
+			return;
+
+		if (me_url.empty())
 		{
+			Log(LOG_DEBUG) << "sasl_oauth_bearer: me_url not configured; skipping";
+			return;
 		}
 
-		void OnReload(Configuration::Conf *conf) anope_override
+		if (!http_client)
+			return;
+
+		// Treat SASL password as JWT access token
+		Anope::string token = req->GetPassword();
+		if (token.empty())
+			return;
+
+		class Callback final : public HTTP::Interface
 		{
-				Configuration::Block *block = conf->GetModule(this);
-				me_url = block->Get<Anope::string>("me_url", me_url);
-				preferred_claim = block->Get<Anope::string>("preferred_claim", preferred_claim);
-				fallback_claim = block->Get<Anope::string>("fallback_claim", fallback_claim);
-				auth_header_prefix = block->Get<Anope::string>("auth_header_prefix", auth_header_prefix);
-				timeout_secs = block->Get<int>("timeout", "5");
-				follow_redirects = block->Get<bool>("follow_redirects", false);
-				verify_peer = block->Get<bool>("verify_peer", true);
-				verify_host = block->Get<bool>("verify_host", true);
-				ca_info = block->Get<Anope::string>("ca_info");
+			SaslOAuthBearerModule *mod;
+			IdentifyRequest *req;
+		public:
+			Callback(SaslOAuthBearerModule *m, IdentifyRequest *r) : mod(m), req(r)
+			{
+				if (req && mod)
+					req->Hold(mod);
+			}
 
-				if (!http_client)
-					http_client = ServiceReference<HTTP::Client>("HTTP::Client", "http_client");
-		}
+			~Callback()
+			{
+				if (req && mod)
+					req->Release(mod);
+			}
 
-		void OnCheckAuthentication(User *, IdentifyRequest *req) anope_override
-		{
-				if (!req)
-						return;
-
-				if (!anope_dynamic_static_cast<SASL::IdentifyRequest *>(req))
+			void OnResult(const HTTP::RequestOptions &, const HTTP::Response &res) override
+			{
+				if (!mod || !req)
 					return;
 
-				if (me_url.empty())
+				if (!res.ok)
 				{
-						Log(LOG_DEBUG) << "sasl_oauth_bearer: me_url not configured; skipping";
-						return;
+					Log(LOG_DEBUG) << "sasl_oauth_bearer: HTTP GET failed for account " << req->GetAccount()
+								   << " error=" << res.error;
+					return;
 				}
 
-				if (!http_client)
-						return;
-
-				// Treat SASL password as JWT access token
-				Anope::string token = req->GetPassword();
-				if (token.empty())
-						return;
-
-				class Callback final : public HTTP::Interface
+				Anope::string claimed = mod->ExtractUsername(res.body);
+				if (!claimed.empty() && req->GetAccount().equals_ci(claimed))
 				{
-					Reference<JwtSASLModule> mod;
-					IdentifyRequest *req;
-				public:
-					Callback(JwtSASLModule *m, IdentifyRequest *r) : mod(m), req(r)
-					{
-						if (req)
-							req->Hold(m);
-					}
+					Log(LOG_DEBUG) << "sasl_oauth_bearer: SUCCESS for account=" << req->GetAccount();
+					req->Success(mod);
+				}
+				else
+				{
+					Log(LOG_DEBUG) << "sasl_oauth_bearer: account mismatch/empty claim for account=" << req->GetAccount();
+				}
+			}
+		};
 
-					~Callback()
-					{
-						if (req && mod)
-							req->Release(mod);
-					}
+		HTTP::RequestOptions opts;
+		opts.url = me_url;
+		opts.headers.push_back(auth_header_prefix + token);
+		opts.headers.push_back("Accept: application/json");
+		opts.timeout_secs = timeout_secs;
+		opts.follow_redirects = follow_redirects;
+		opts.verify_peer = verify_peer;
+		opts.verify_host = verify_host;
+		opts.ca_info = ca_info;
 
-					void OnResult(const HTTP::RequestOptions &, const HTTP::Response &res) override
-					{
-						if (!mod || !req)
-							return;
+		http_client->Get(new Callback(this, req), opts);
+	}
 
-						if (!res.ok)
-						{
-							Log(LOG_DEBUG) << "sasl_oauth_bearer: HTTP GET failed for account " << req->GetAccount()
-										   << " error=" << res.error;
-							return;
-						}
-
-						Anope::string claimed = mod->ExtractUsername(res.body);
-						if (!claimed.empty() && req->GetAccount().equals_ci(claimed))
-						{
-							Log(LOG_DEBUG) << "sasl_oauth_bearer: SUCCESS for account=" << req->GetAccount();
-							req->Success(mod);
-						}
-						else
-						{
-							Log(LOG_DEBUG) << "sasl_oauth_bearer: account mismatch/empty claim for account=" << req->GetAccount();
-						}
-					}
-				};
-
-				HTTP::RequestOptions opts;
-				opts.url = me_url;
-				opts.headers.push_back(auth_header_prefix + token);
-				opts.headers.push_back("Accept: application/json");
-				opts.timeout_secs = timeout_secs;
-				opts.follow_redirects = follow_redirects;
-				opts.verify_peer = verify_peer;
-				opts.verify_host = verify_host;
-				opts.ca_info = ca_info;
-
-				http_client->Get(new Callback(this, req), opts);
-		}
-
-		~JwtSASLModule() { }
+	~SaslOAuthBearerModule() { }
 };
 
-MODULE_INIT(JwtSASLModule)
+MODULE_INIT(SaslOAuthBearerModule)
