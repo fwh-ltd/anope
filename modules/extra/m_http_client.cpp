@@ -24,15 +24,19 @@ namespace
 
 	struct Job
 	{
-		Interface *cb{nullptr};
+		Interface *cb;
 		RequestOptions opts;
+		Job() : cb(nullptr) {}
+		Job(Interface *c, const RequestOptions &o) : cb(c), opts(o) {}
 	};
 
 	struct JobResult
 	{
-		Interface *cb{nullptr};
+		Interface *cb;
 		RequestOptions opts;
 		Response res;
+		JobResult() : cb(nullptr) {}
+		JobResult(Interface *c, const RequestOptions &o, const Response &r) : cb(c), opts(o), res(r) {}
 	};
 
 	class Worker final : public Thread
@@ -42,7 +46,7 @@ namespace
 		Condition cond;
 		std::deque<Job> jobs;
 		std::deque<JobResult> results;
-		bool stopping{false};
+		bool stopping;
 
 		static size_t WriteCallback(void *contents, size_t size, size_t nmemb, std::string *userp)
 		{
@@ -90,7 +94,7 @@ namespace
 		}
 
 	public:
-		explicit Worker(CurlHttpClient &c) : owner(c)
+		explicit Worker(CurlHttpClient &c) : owner(c), stopping(false)
 		{
 			Start();
 		}
@@ -189,10 +193,10 @@ namespace
 
 	class CurlHttpClient final : public Client
 	{
-		Worker *worker{nullptr};
+		Worker *worker;
 
 	public:
-		CurlHttpClient(Module *o) : Client(o)
+		CurlHttpClient(Module *o) : Client(o), worker(nullptr)
 		{
 			worker = new Worker(*this);
 		}

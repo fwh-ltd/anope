@@ -15,20 +15,22 @@ namespace HTTP
 	{
 		Anope::string url;
 		std::vector<Anope::string> headers;
-		int timeout_secs{5};
+		int timeout_secs;
 		Anope::string user_agent;
-		bool follow_redirects{false};
-		bool verify_peer{true};
-		bool verify_host{true};
+		bool follow_redirects;
+		bool verify_peer;
+		bool verify_host;
 		Anope::string ca_info;
+		RequestOptions() : timeout_secs(5), follow_redirects(false), verify_peer(true), verify_host(true) {}
 	};
 
 	struct Response
 	{
-		bool ok{false};
-		long http_code{0};
+		bool ok;
+		long http_code;
 		std::string body;
 		Anope::string error;
+		Response() : ok(false), http_code(0) {}
 	};
 
 	class Interface

@@ -34,13 +34,13 @@ extern "C" {
 class SaslOAuthBearerModule final : public Module
 {
 	Anope::string me_url;
-	Anope::string preferred_claim{"preferred_username"};
-	Anope::string fallback_claim{"user_login"};
-	Anope::string auth_header_prefix{"Authorization: Bearer "};
-	int timeout_secs{5};
-	bool follow_redirects{false};
-	bool verify_peer{true};
-	bool verify_host{true};
+	Anope::string preferred_claim;
+	Anope::string fallback_claim;
+	Anope::string auth_header_prefix;
+	int timeout_secs;
+	bool follow_redirects;
+	bool verify_peer;
+	bool verify_host;
 	Anope::string ca_info;
 	ServiceReference<HTTP::Client> http_client;
 
@@ -73,6 +73,13 @@ public:
 
 	SaslOAuthBearerModule(const Anope::string &modname, const Anope::string &creator)
 		: Module(modname, creator, THIRD)
+		, preferred_claim("preferred_username")
+		, fallback_claim("user_login")
+		, auth_header_prefix("Authorization: Bearer ")
+		, timeout_secs(5)
+		, follow_redirects(false)
+		, verify_peer(true)
+		, verify_host(true)
 		, http_client("HTTP::Client", "http_client")
 	{
 	}
